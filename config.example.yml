@@ -1,0 +1,45 @@
+settings:
+  listen-address: ":9321"
+  telemetry-path: /metrics
+  max-workers-count: 4
+  default-timeout: 5s
+  response-body-limit: 1024
+  debug: false
+
+metrics:
+  namespace: watchdog
+  environment: dev
+
+routes:
+  direct: {}
+  internal:
+    target-ip: "127.0.0.1"
+  external:
+    proxy-url: "http://1.2.3.4:8080"
+
+endpoints:
+  "example.com":
+    protocol: http
+    routes: [direct, external]
+    request:
+      method: GET
+      url: "https://example.com"
+      headers: {}
+    validation:
+      status-code: 200
+      headers:
+        "content-type": "text/html"
+      body-regex: ".*Wrong Domain.*"
+  "example.org":
+    protocol: http
+    routes: [direct, internal, external]
+    request:
+      timeout: 10s
+      method: GET
+      url: "https://example.org"
+      headers: {}
+    validation:
+      status-code: 200
+      headers:
+        "content-type": "text/html"
+      body-regex: ".*Example Domain.*"
