@@ -1,9 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"gopkg.in/yaml.v3"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -33,6 +35,7 @@ type Route struct {
 }
 
 type Endpoint struct {
+	Group      string             `yaml:"group"`
 	Protocol   string             `yaml:"protocol"`
 	Routes     []string           `yaml:"routes"`
 	Request    EndpointRequest    `yaml:"request"`
@@ -90,4 +93,21 @@ func (c *WatchDogConfig) fillDefaults() {
 			endpoint.Request.Method = http.MethodGet
 		}
 	}
+}
+
+func (c *WatchDogConfig) PrintHello() {
+	var routeKeys []string
+	for k := range c.Routes {
+		routeKeys = append(routeKeys, k)
+	}
+
+	var endpointKeys []string
+	for k := range c.Endpoints {
+		endpointKeys = append(endpointKeys, k)
+	}
+
+	fmt.Printf("Routes: %s\nEndpoints: %s\n",
+		strings.Join(routeKeys, ", "),
+		strings.Join(endpointKeys, ", "),
+	)
 }

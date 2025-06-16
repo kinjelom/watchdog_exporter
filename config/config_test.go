@@ -58,6 +58,7 @@ routes:
     target-ip: "1.2.3.4"
 endpoints:
   ep1:
+    group: group-1
     protocol: "http"
     routes: ["r1"]
     request:
@@ -93,7 +94,7 @@ endpoints:
 	if cfg.Settings.ListenAddress != ":8080" {
 		t.Errorf("expected ListenAddress ':8080', got '%s'", cfg.Settings.ListenAddress)
 	}
-	if cfg.Settings.MaxWorkersCount != 4 {
+	if cfg.Settings.MaxWorkersCount != 3 {
 		t.Errorf("expected MaxWorkersCount 3, got %d", cfg.Settings.MaxWorkersCount)
 	}
 	if cfg.Settings.ResponseBodyLimit != 1024 {
@@ -120,6 +121,9 @@ endpoints:
 	if !ok {
 		t.Error("expected Endpoints['ep1'] present")
 	} else {
+		if ep.Group != "group-1" {
+			t.Errorf("expected Group 'group-1', got '%s'", ep.Protocol)
+		}
 		if ep.Protocol != "http" {
 			t.Errorf("expected Protocol 'http', got '%s'", ep.Protocol)
 		}

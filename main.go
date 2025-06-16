@@ -30,6 +30,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("cannot load --config=%s: %v", *configFile, err))
 	}
+	cfg.PrintHello()
 	wdMetrics = metrics.NewWatchDogMetrics(ProgramName, ProgramVersion, cfg)
 
 	http.HandleFunc(cfg.Settings.TelemetryPath, handler)

@@ -26,7 +26,7 @@ func NewWatchDogMetrics(programName, programVersion string, config *config.Watch
 			ConstLabels: *constantLabels,
 		}
 	}
-	endpointLabels := []string{"endpoint", "protocol", "url", "route", "valid"}
+	endpointLabels := []string{"group", "endpoint", "protocol", "url", "route", "valid"}
 	metrics := &WatchDogMetrics{
 		cfg:       config,
 		validator: validator.NewWatchDogValidator(config.Settings.ResponseBodyLimit, config.Settings.Debug),
@@ -69,7 +69,7 @@ func (m *WatchDogMetrics) emitEndpointMetrics(endpointName string, endpoint conf
 	for _, routeKey := range endpoint.Routes {
 		route := m.cfg.Routes[routeKey]
 		valid, duration := m.validator.Validate(endpointName, endpoint.Request, routeKey, route, endpoint.Validation)
-		labels := prometheus.Labels{"endpoint": endpointName, "protocol": endpoint.Protocol,
+		labels := prometheus.Labels{"group": endpoint.Group, "endpoint": endpointName, "protocol": endpoint.Protocol,
 			"url": endpoint.Request.URL, "route": routeKey, "valid": fmt.Sprintf("%v", valid)}
 
 		m.EndpointValidation.With(labels).Set(1)

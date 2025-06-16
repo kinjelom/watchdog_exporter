@@ -149,7 +149,7 @@ func (m *WatchDogValidator) validateResponse(endpointName, routeName string, res
 		defer func(Body io.ReadCloser) {
 			_ = Body.Close()
 		}(resp.Body)
-		reader := io.LimitReader(resp.Body, int64(m.responseBodyLimit))
+		reader := io.LimitReader(resp.Body, m.responseBodyLimit)
 		body, _ := io.ReadAll(reader)
 		matched, _ := regexp.Match(v.BodyRegex, body)
 		if !matched {

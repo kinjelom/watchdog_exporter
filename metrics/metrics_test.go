@@ -56,9 +56,10 @@ func TestEndpointValidationMetric(t *testing.T) {
 	}()
 
 	labels := prometheus.Labels{
-		"endpoint": "ep1",
+		"group":    "group-1",
+		"endpoint": "ep-1",
 		"protocol": "http",
-		"url":      "http://example.com",
+		"url":      "https://example.com",
 		"route":    "r1",
 		"valid":    "true",
 	}
@@ -82,9 +83,10 @@ func TestEndpointDurationMetric(t *testing.T) {
 	}()
 
 	labels := prometheus.Labels{
-		"endpoint": "epX",
-		"protocol": "https",
-		"url":      "https://foo.bar",
+		"group":    "group-1",
+		"endpoint": "ep-1",
+		"protocol": "http",
+		"url":      "https://example.org",
 		"route":    "routeA",
 		"valid":    "false",
 	}

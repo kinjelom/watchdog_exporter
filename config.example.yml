@@ -19,6 +19,7 @@ routes:
 
 endpoints:
   "example.com":
+    group: group-1
     protocol: http
     routes: [direct, external]
     request:
@@ -31,6 +32,7 @@ endpoints:
         "content-type": "text/html"
       body-regex: ".*Wrong Domain.*"
   "example.org":
+    group: group-2
     protocol: http
     routes: [direct, internal, external]
     request:
