@@ -1,14 +1,15 @@
 #!/bin/bash
 
 PROGRAM_NAME="watchdog_exporter"
-VERSION="0.0.2"
-
+VERSION="0.1.0"
 DIST_DIR=".dist"
+LOG_DIR="$DIST_DIR/logs"
 
-declare -a os_array=("linux") # "darwin" "windows")
-declare -a arch_array=("amd64") # "arm64")
+mkdir -p "$DIST_DIR" "$LOG_DIR"
 
-mkdir -p "$DIST_DIR"
+declare -a os_array=("linux" "darwin" "windows")
+declare -a arch_array=("amd64" "arm64")
+
 
 for OS in "${os_array[@]}"; do
     for ARCH in "${arch_array[@]}"; do
@@ -16,8 +17,8 @@ for OS in "${os_array[@]}"; do
         mkdir -p "${DIST_DIR}/${FULL_NAME}"
         DIST_PATH="${DIST_DIR}/${FULL_NAME}/${PROGRAM_NAME}"
         echo "build $DIST_PATH"
-        if GOOS=$OS GOARCH=$ARCH go build -o "$DIST_PATH" -ldflags="-X 'main.ProgramVersion=${VERSION}'" >> "${DIST_PATH}.log"; then
-            sha256sum "$DIST_PATH"  | awk '{print $1}' > "${DIST_PATH}.sum"
+        if GOOS=$OS GOARCH=$ARCH go build -o "$DIST_PATH" -ldflags="-X 'main.ProgramVersion=${VERSION}'" >> "${LOG_DIR}/${PROGRAM_NAME}.build.log"; then
+            sha256sum "$DIST_PATH"  | awk '{print $1}' > "${DIST_DIR}/${FULL_NAME}.sum"
         fi
         tar -czvf "${DIST_DIR}/${FULL_NAME}.tar.tgz" -C "$DIST_DIR" "$FULL_NAME"
     done

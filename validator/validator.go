@@ -18,13 +18,7 @@ type WatchDogValidator struct {
 	debug             bool
 }
 
-func (m *WatchDogValidator) Validate(
-	endpointName string,
-	request config.EndpointRequest,
-	routeName string,
-	route config.Route,
-	validation config.EndpointValidation,
-) (valid bool, duration float64) {
+func (m *WatchDogValidator) Validate(endpointName string, request config.EndpointRequest, routeName string, route config.Route, validation config.EndpointValidation) (valid bool, duration float64) {
 	// prepare default HTTP client timeout
 	client := &http.Client{
 		Timeout: request.Timeout,
@@ -58,8 +52,9 @@ func (m *WatchDogValidator) Validate(
 
 	// custom Transport: TLS + SNI + DialContext for TargetIP override and optional proxy
 	transport := &http.Transport{
-		Proxy:           proxyFunc,
-		TLSClientConfig: &tls.Config{ServerName: originalHost}, // SNI
+		Proxy:             proxyFunc,
+		DisableKeepAlives: true,
+		TLSClientConfig:   &tls.Config{ServerName: originalHost}, // SNI
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// addr == "hostname:port"
 			host, port, splitErr := net.SplitHostPort(addr)
@@ -75,7 +70,6 @@ func (m *WatchDogValidator) Validate(
 			return dialer.DialContext(ctx, network, net.JoinHostPort(host, port))
 		},
 	}
-
 	client.Transport = transport
 
 	// rebuild target URL if TargetIP override
@@ -97,13 +91,14 @@ func (m *WatchDogValidator) Validate(
 	method := request.Method
 	req, err := http.NewRequest(method, targetURL, nil)
 	if err != nil {
-		log.Printf("failed to prepare request for URL %s: %v", targetURL, err)
+		log.Printf("failed to prepare request for endpoint %s URL %s: %v", endpointName, targetURL, err)
 		return false, 0
 	}
 
 	// set Host header back to original
 	req.Host = originalHost
 	// set custom headers
+	req.Header.Set("Cache-Control", "no-cache")
 	for key, val := range request.Headers {
 		req.Header.Set(key, val)
 	}
@@ -114,7 +109,7 @@ func (m *WatchDogValidator) Validate(
 	duration = time.Since(start).Seconds()
 	if err != nil {
 		if m.debug {
-			log.Printf("request error for endpoint '%s' and route '%s': %v", endpointName, routeName, err)
+			log.Printf("request error for %s / '%s': %v", request.URL, routeName, err)
 		}
 		return false, duration
 	}
@@ -123,14 +118,14 @@ func (m *WatchDogValidator) Validate(
 	}(resp.Body)
 
 	// response validation
-	valid = m.validateResponse(endpointName, routeName, resp, validation)
+	valid = m.validateResponse(request.URL, routeName, resp, validation)
 	return valid, duration
 }
 
-func (m *WatchDogValidator) validateResponse(endpointName, routeName string, resp *http.Response, v config.EndpointValidation) bool {
+func (m *WatchDogValidator) validateResponse(url, routeName string, resp *http.Response, v config.EndpointValidation) bool {
 	if resp.StatusCode != v.StatusCode {
 		if m.debug {
-			log.Printf("wrong status code for endpoint '%s' and route '%s', expected '%d', got '%d'", endpointName, routeName, v.StatusCode, resp.StatusCode)
+			log.Printf("wrong status code for %s / '%s', expected '%d', got '%d'", url, routeName, v.StatusCode, resp.StatusCode)
 		}
 		return false
 	}
@@ -139,7 +134,7 @@ func (m *WatchDogValidator) validateResponse(endpointName, routeName string, res
 		gotV := resp.Header.Get(k)
 		if gotV != v {
 			if m.debug {
-				log.Printf("wrong header for endpoint '%s' and route '%s', expected '%s', got '%s'", endpointName, routeName, v, gotV)
+				log.Printf("wrong header for %s / '%s', expected '%s', got '%s'", url, routeName, v, gotV)
 			}
 			return false
 		}
@@ -154,7 +149,7 @@ func (m *WatchDogValidator) validateResponse(endpointName, routeName string, res
 		matched, _ := regexp.Match(v.BodyRegex, body)
 		if !matched {
 			if m.debug {
-				log.Printf("wrong body for endpoint '%s' and route '%s', expected regex '%s', got ---\n%s\n---", endpointName, routeName, v.BodyRegex, body)
+				log.Printf("wrong body for %s / '%s', expected regex '%s', got ---\n%s\n---", url, routeName, v.BodyRegex, body)
 			}
 			return false
 		}
