@@ -18,7 +18,7 @@ for OS in "${os_array[@]}"; do
         DIST_PATH="${DIST_DIR}/${FULL_NAME}/${PROGRAM_NAME}"
         echo "build $DIST_PATH"
         if GOOS=$OS GOARCH=$ARCH go build -o "$DIST_PATH" -ldflags="-X 'main.ProgramVersion=${VERSION}'" >> "${LOG_DIR}/${PROGRAM_NAME}.build.log"; then
-            sha256sum "$DIST_PATH"  | awk '{print $1}' > "${DIST_DIR}/${FULL_NAME}.sum"
+            sha256sum "$DIST_PATH"  | awk '{print $1}' > "${DIST_DIR}/${FULL_NAME}.sum.txt"
         fi
         tar -czvf "${DIST_DIR}/${FULL_NAME}.tar.tgz" -C "$DIST_DIR" "$FULL_NAME"
     done
