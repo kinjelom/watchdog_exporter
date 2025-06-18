@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PROGRAM_NAME="watchdog_exporter"
-VERSION="0.2.2"
+VERSION="0.3.0"
 DIST_DIR=".dist"
 LOG_DIR="$DIST_DIR/logs"
 
