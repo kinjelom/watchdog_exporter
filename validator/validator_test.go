@@ -12,13 +12,13 @@ import (
 
 func TestValidate(t *testing.T) {
 	tests := []struct {
-		name        string
-		statusCode  int
-		headers     map[string]string
-		body        string
-		bodyLimit   int64
-		validation  config.EndpointValidation
-		expectValid bool
+		name         string
+		statusCode   int
+		headers      map[string]string
+		body         string
+		bodyLimit    int64
+		validation   config.EndpointValidation
+		expectStatus string
 	}{
 		{
 			name:       "Success all match",
@@ -31,52 +31,52 @@ func TestValidate(t *testing.T) {
 				Headers:    map[string]string{"X-Test": "value"},
 				BodyRegex:  "hello",
 			},
-			expectValid: true,
+			expectStatus: "valid",
 		},
 		{
-			name:        "Wrong status code",
-			statusCode:  http.StatusInternalServerError,
-			headers:     nil,
-			body:        "",
-			bodyLimit:   10,
-			validation:  config.EndpointValidation{StatusCode: http.StatusOK},
-			expectValid: false,
+			name:         "invalid status code",
+			statusCode:   http.StatusInternalServerError,
+			headers:      nil,
+			body:         "",
+			bodyLimit:    10,
+			validation:   config.EndpointValidation{StatusCode: http.StatusOK},
+			expectStatus: "invalid-status-code",
 		},
 		{
-			name:        "Wrong header value",
-			statusCode:  http.StatusOK,
-			headers:     map[string]string{"X-Test": "bad"},
-			body:        "",
-			bodyLimit:   10,
-			validation:  config.EndpointValidation{StatusCode: http.StatusOK, Headers: map[string]string{"X-Test": "good"}},
-			expectValid: false,
+			name:         "invalid header value",
+			statusCode:   http.StatusOK,
+			headers:      map[string]string{"X-Test": "bad"},
+			body:         "",
+			bodyLimit:    10,
+			validation:   config.EndpointValidation{StatusCode: http.StatusOK, Headers: map[string]string{"X-Test": "good"}},
+			expectStatus: "invalid-header-value",
 		},
 		{
-			name:        "Body regex mismatch",
-			statusCode:  http.StatusOK,
-			headers:     nil,
-			body:        "abcdef",
-			bodyLimit:   100,
-			validation:  config.EndpointValidation{StatusCode: http.StatusOK, BodyRegex: "xyz"},
-			expectValid: false,
+			name:         "Body regex mismatch",
+			statusCode:   http.StatusOK,
+			headers:      nil,
+			body:         "abcdef",
+			bodyLimit:    100,
+			validation:   config.EndpointValidation{StatusCode: http.StatusOK, BodyRegex: "xyz"},
+			expectStatus: "invalid-body-regex",
 		},
 		{
-			name:        "Body limit prevents full match",
-			statusCode:  http.StatusOK,
-			headers:     nil,
-			body:        "abcdef",
-			bodyLimit:   3,
-			validation:  config.EndpointValidation{StatusCode: http.StatusOK, BodyRegex: "abcd"},
-			expectValid: false,
+			name:         "Body limit prevents full match",
+			statusCode:   http.StatusOK,
+			headers:      nil,
+			body:         "abcdef",
+			bodyLimit:    3,
+			validation:   config.EndpointValidation{StatusCode: http.StatusOK, BodyRegex: "abcd"},
+			expectStatus: "invalid-body-regex",
 		},
 		{
-			name:        "Body limit allows partial match",
-			statusCode:  http.StatusOK,
-			headers:     nil,
-			body:        "abcdef",
-			bodyLimit:   3,
-			validation:  config.EndpointValidation{StatusCode: http.StatusOK, BodyRegex: "abc"},
-			expectValid: true,
+			name:         "Body limit allows partial match",
+			statusCode:   http.StatusOK,
+			headers:      nil,
+			body:         "abcdef",
+			bodyLimit:    3,
+			validation:   config.EndpointValidation{StatusCode: http.StatusOK, BodyRegex: "abc"},
+			expectStatus: "valid",
 		},
 	}
 
@@ -104,9 +104,9 @@ func TestValidate(t *testing.T) {
 			// create validator with body limit
 			v := NewWatchDogValidator(tt.bodyLimit, false)
 
-			valid, duration := v.Validate("ep", req, "rt", route, tt.validation)
-			if valid != tt.expectValid {
-				t.Errorf("%s: expected valid=%v, got %v", tt.name, tt.expectValid, valid)
+			status, duration := v.Validate("ep", req, "rt", route, tt.validation)
+			if status != tt.expectStatus {
+				t.Errorf("%s: expected status=%v, got %v", tt.name, tt.expectStatus, status)
 			}
 			if duration < 0 {
 				t.Errorf("%s: expected non-negative duration, got %v", tt.name, duration)

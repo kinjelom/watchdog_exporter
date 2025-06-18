@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"sync"
@@ -26,7 +25,7 @@ func NewWatchDogMetrics(programName, programVersion string, config *config.Watch
 			ConstLabels: *constantLabels,
 		}
 	}
-	endpointLabels := []string{"group", "endpoint", "protocol", "url", "route", "valid"}
+	endpointLabels := []string{"group", "endpoint", "protocol", "url", "route", "status"}
 	metrics := &WatchDogMetrics{
 		cfg:       config,
 		validator: validator.NewWatchDogValidator(config.Settings.ResponseBodyLimit, config.Settings.Debug),
@@ -49,6 +48,8 @@ func NewWatchDogMetrics(programName, programVersion string, config *config.Watch
 
 func (m *WatchDogMetrics) Emit() {
 	m.BuildInfo.With(nil).Set(1)
+	m.EndpointValidation.Reset()
+	m.EndpointDuration.Reset()
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, m.cfg.Settings.MaxWorkersCount)
@@ -68,9 +69,9 @@ func (m *WatchDogMetrics) Emit() {
 func (m *WatchDogMetrics) emitEndpointMetrics(endpointName string, endpoint config.Endpoint) {
 	for _, routeKey := range endpoint.Routes {
 		route := m.cfg.Routes[routeKey]
-		valid, duration := m.validator.Validate(endpointName, endpoint.Request, routeKey, route, endpoint.Validation)
+		status, duration := m.validator.Validate(endpointName, endpoint.Request, routeKey, route, endpoint.Validation)
 		labels := prometheus.Labels{"group": endpoint.Group, "endpoint": endpointName, "protocol": endpoint.Protocol,
-			"url": endpoint.Request.URL, "route": routeKey, "valid": fmt.Sprintf("%v", valid)}
+			"url": endpoint.Request.URL, "route": routeKey, "status": status}
 
 		m.EndpointValidation.With(labels).Set(1)
 		m.EndpointDuration.With(labels).Set(duration)

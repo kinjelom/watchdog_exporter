@@ -18,7 +18,7 @@ type WatchDogValidator struct {
 	debug             bool
 }
 
-func (m *WatchDogValidator) Validate(endpointName string, request config.EndpointRequest, routeName string, route config.Route, validation config.EndpointValidation) (valid bool, duration float64) {
+func (m *WatchDogValidator) Validate(endpointName string, request config.EndpointRequest, routeName string, route config.Route, validation config.EndpointValidation) (status string, duration float64) {
 	// prepare default HTTP client timeout
 	client := &http.Client{
 		Timeout: request.Timeout,
@@ -28,8 +28,8 @@ func (m *WatchDogValidator) Validate(endpointName string, request config.Endpoin
 	targetURL := request.URL
 	u, err := url.Parse(request.URL)
 	if err != nil {
-		log.Printf("failed to parse URL %s: %v", request.URL, err)
-		return false, 0
+		log.Printf("invalid-url: failed to parse URL %s - %v", request.URL, err)
+		return "invalid-url", 0
 	}
 	originalHost := u.Hostname()
 
@@ -38,8 +38,8 @@ func (m *WatchDogValidator) Validate(endpointName string, request config.Endpoin
 	if route.ProxyUrl != "" {
 		proxyURL, err := url.Parse(route.ProxyUrl)
 		if err != nil {
-			log.Printf("failed to parse proxy URL %s: %v", route.ProxyUrl, err)
-			return false, 0
+			log.Printf("invalid-proxy-definition: failed to parse proxy URL %s - %v", route.ProxyUrl, err)
+			return "invalid-proxy-definition", 0
 		}
 		proxyFunc = http.ProxyURL(proxyURL)
 	}
@@ -91,8 +91,8 @@ func (m *WatchDogValidator) Validate(endpointName string, request config.Endpoin
 	method := request.Method
 	req, err := http.NewRequest(method, targetURL, nil)
 	if err != nil {
-		log.Printf("failed to prepare request for endpoint %s URL %s: %v", endpointName, targetURL, err)
-		return false, 0
+		log.Printf("invalid-request-definition: failed to prepare request for endpoint %s URL %s - %v", endpointName, targetURL, err)
+		return "invalid-request-definition", 0
 	}
 
 	// set Host header back to original
@@ -109,34 +109,34 @@ func (m *WatchDogValidator) Validate(endpointName string, request config.Endpoin
 	duration = time.Since(start).Seconds()
 	if err != nil {
 		if m.debug {
-			log.Printf("request error for %s / '%s': %v", request.URL, routeName, err)
+			log.Printf("invalid-request-execution: %s / '%s': %v", request.URL, routeName, err)
 		}
-		return false, duration
+		return "invalid-request-execution", duration
 	}
 	defer func(Body io.ReadCloser) {
 		_ = Body.Close()
 	}(resp.Body)
 
 	// response validation
-	valid = m.validateResponse(request.URL, routeName, resp, validation)
-	return valid, duration
+	status = m.validateResponse(request.URL, routeName, resp, validation)
+	return status, duration
 }
 
-func (m *WatchDogValidator) validateResponse(url, routeName string, resp *http.Response, v config.EndpointValidation) bool {
+func (m *WatchDogValidator) validateResponse(url, routeName string, resp *http.Response, v config.EndpointValidation) (status string) {
 	if resp.StatusCode != v.StatusCode {
 		if m.debug {
-			log.Printf("wrong status code for %s / '%s', expected '%d', got '%d'", url, routeName, v.StatusCode, resp.StatusCode)
+			log.Printf("invalid-status-code: %s / '%s', expected '%d', got '%d'", url, routeName, v.StatusCode, resp.StatusCode)
 		}
-		return false
+		return "invalid-status-code"
 	}
 
 	for k, v := range v.Headers {
 		gotV := resp.Header.Get(k)
 		if gotV != v {
 			if m.debug {
-				log.Printf("wrong header for %s / '%s', expected '%s', got '%s'", url, routeName, v, gotV)
+				log.Printf("invalid-header-value: %s / '%s', expected '%s', got '%s'", url, routeName, v, gotV)
 			}
-			return false
+			return "invalid-header-value"
 		}
 	}
 
@@ -149,12 +149,12 @@ func (m *WatchDogValidator) validateResponse(url, routeName string, resp *http.R
 		matched, _ := regexp.Match(v.BodyRegex, body)
 		if !matched {
 			if m.debug {
-				log.Printf("wrong body for %s / '%s', expected regex '%s', got ---\n%s\n---", url, routeName, v.BodyRegex, body)
+				log.Printf("invalid-body-regex: %s / '%s', expected regex '%s', got ---\n%s\n---", url, routeName, v.BodyRegex, body)
 			}
-			return false
+			return "invalid-body-regex"
 		}
 	}
-	return true
+	return "valid"
 }
 
 func NewWatchDogValidator(responseBodyLimit int64, debug bool) *WatchDogValidator {

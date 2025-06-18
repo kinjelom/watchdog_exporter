@@ -1,14 +1,14 @@
 #!/bin/bash
 
 PROGRAM_NAME="watchdog_exporter"
-VERSION="0.1.0"
+VERSION="0.2.2"
 DIST_DIR=".dist"
 LOG_DIR="$DIST_DIR/logs"
 
 mkdir -p "$DIST_DIR" "$LOG_DIR"
 
 declare -a os_array=("linux" "darwin" "windows")
-declare -a arch_array=("amd64" "arm64")
+declare -a arch_array=("amd64") # "arm64")
 
 
 for OS in "${os_array[@]}"; do

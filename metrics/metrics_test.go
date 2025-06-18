@@ -61,7 +61,7 @@ func TestEndpointValidationMetric(t *testing.T) {
 		"protocol": "http",
 		"url":      "https://example.com",
 		"route":    "r1",
-		"valid":    "true",
+		"status":   "valid",
 	}
 	// set gauge
 	m.EndpointValidation.With(labels).Set(1)
@@ -88,7 +88,7 @@ func TestEndpointDurationMetric(t *testing.T) {
 		"protocol": "http",
 		"url":      "https://example.org",
 		"route":    "routeA",
-		"valid":    "false",
+		"status":   "err",
 	}
 	// set gauge
 	m.EndpointDuration.With(labels).Set(1.234)
