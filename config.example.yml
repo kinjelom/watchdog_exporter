@@ -18,6 +18,7 @@ routes:
     proxy-url: "http://1.2.3.4:8080"
 
 endpoints:
+  # block style
   "example.com":
     group: group-1
     protocol: http
@@ -31,17 +32,7 @@ endpoints:
       headers:
         "content-type": "text/html"
       body-regex: ".*Wrong Domain.*"
-  "example.org":
-    group: group-2
-    protocol: http
-    routes: [direct, internal, external]
-    request:
-      timeout: 10s
-      method: GET
-      url: "https://example.org"
-      headers: {}
-    validation:
-      status-code: 200
-      headers:
-        "content-type": "text/html"
-      body-regex: ".*Example Domain.*"
+  # Flow style
+  "example.org":       { group: group-2, protocol: http, routes: [direct, internal, external], request: { timeout: 10s, method: GET, url: "https://example.org", headers: {} }, validation: { status-code: 200, headers: { "content-type": "text/html" }, body-regex: ".*Example Domain.*" } }
+  example-org-minimal: { group: group-2, protocol: http, routes: [direct, internal, external], request: { url: "https://example.org" }, validation: { status-code: 200 } }
+
