@@ -17,21 +17,21 @@ func TestLoadConfig_FileNotFound(t *testing.T) {
 }
 
 func TestLoadConfig_InvalidYAML(t *testing.T) {
-	tmpfile, err := os.CreateTemp("", "invalid-*.yaml")
+	tmpFile, err := os.CreateTemp("", "invalid-*.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	defer func(name string) {
 		_ = os.Remove(name)
-	}(tmpfile.Name())
+	}(tmpFile.Name())
 
-	_, writeErr := tmpfile.WriteString("not valid yaml")
+	_, writeErr := tmpFile.WriteString("not valid yaml")
 	if writeErr != nil {
 		t.Fatalf("failed to write to temp file: %v", writeErr)
 	}
-	_ = tmpfile.Close()
+	_ = tmpFile.Close()
 
-	cfg, err := LoadConfig(tmpfile.Name())
+	cfg, err := LoadConfig(tmpFile.Name())
 	if err == nil {
 		t.Fatal("expected YAML parse error, got nil")
 	}
@@ -44,10 +44,11 @@ func TestLoadConfig_Success(t *testing.T) {
 	content := `
 settings:
   listen-address: ":8080"
+  probe-interval: 2m30s
   telemetry-path: "/metrics"
   max-workers-count: 3
   default-timeout: 5s
-  response-body-limit: 1024
+  default-response-body-limit: 1024
   debug: true
 metrics:
   namespace: "testns"
@@ -60,45 +61,49 @@ endpoints:
   ep1:
     group: group-1
     protocol: "http"
+    inspect-tls-certs: true
     routes: ["r1"]
     request:
       timeout: 2s
       method: "GET"
       headers:
         Header1: "value1"
-      url: "http://example.com"
+      url: "https://example.com"
     validation:
       status-code: 200
       headers:
         Content-Type: "application/json"
       body-regex: ".*"
 `
-	tmpfile, err := os.CreateTemp("", "valid-*.yaml")
+	tmpFile, err := os.CreateTemp("", "valid-*.yaml")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	defer func(name string) {
 		_ = os.Remove(name)
-	}(tmpfile.Name())
+	}(tmpFile.Name())
 
-	_, writeErr := tmpfile.WriteString(content)
+	_, writeErr := tmpFile.WriteString(content)
 	if writeErr != nil {
 		t.Fatalf("failed to write to temp file: %v", writeErr)
 	}
-	_ = tmpfile.Close()
+	_ = tmpFile.Close()
 
-	cfg, err := LoadConfig(tmpfile.Name())
+	cfg, err := LoadConfig(tmpFile.Name())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if cfg.Settings.ListenAddress != ":8080" {
 		t.Errorf("expected ListenAddress ':8080', got '%s'", cfg.Settings.ListenAddress)
 	}
+	if cfg.Settings.ProbeInterval != 2*time.Minute+30*time.Second {
+		t.Errorf("expected ProbeInterval 2m30s, got %d", cfg.Settings.ProbeInterval)
+	}
 	if cfg.Settings.MaxWorkersCount != 3 {
 		t.Errorf("expected MaxWorkersCount 3, got %d", cfg.Settings.MaxWorkersCount)
 	}
-	if cfg.Settings.ResponseBodyLimit != 1024 {
-		t.Errorf("expected ResponseBodyLimit 1024, got %d", cfg.Settings.ResponseBodyLimit)
+	if cfg.Settings.DefaultResponseBodyLimit != 1024 {
+		t.Errorf("expected DefaultResponseBodyLimit 1024, got %d", cfg.Settings.DefaultResponseBodyLimit)
 	}
 	if !cfg.Settings.Debug {
 		t.Errorf("expected Debug true, got false")
@@ -127,6 +132,9 @@ endpoints:
 		if ep.Protocol != "http" {
 			t.Errorf("expected Protocol 'http', got '%s'", ep.Protocol)
 		}
+		if !ep.InspectTLSCerts {
+			t.Errorf("expected check TLS, got '%v'", ep.InspectTLSCerts)
+		}
 		if len(ep.Routes) != 1 || ep.Routes[0] != "r1" {
 			t.Errorf("expected Routes ['r1'], got %v", ep.Routes)
 		}
@@ -139,8 +147,8 @@ endpoints:
 		if ep.Request.Headers["Header1"] != "value1" {
 			t.Errorf("expected Header1 'value1', got '%s'", ep.Request.Headers["Header1"])
 		}
-		if ep.Request.URL != "http://example.com" {
-			t.Errorf("expected URL 'http://example.com', got '%s'", ep.Request.URL)
+		if ep.Request.URL != "https://example.com" {
+			t.Errorf("expected URL 'https://example.com', got '%s'", ep.Request.URL)
 		}
 		if ep.Validation.StatusCode != 200 {
 			t.Errorf("expected Validation.StatusCode 200, got %d", ep.Validation.StatusCode)

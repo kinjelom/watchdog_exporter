@@ -1,9 +1,10 @@
 settings:
   listen-address: ":9321"
+  probe-interval: 2m30s
   telemetry-path: /metrics
   max-workers-count: 4
   default-timeout: 5s
-  response-body-limit: 1024
+  default-response-body-limit: 1024
   debug: false
 
 metrics:
@@ -22,6 +23,7 @@ endpoints:
   "example.com":
     group: group-1
     protocol: http
+    inspect-tls-certs: true
     routes: [direct, external]
     request:
       method: GET

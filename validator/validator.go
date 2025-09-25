@@ -2,73 +2,60 @@ package validator
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"regexp"
 	"time"
 	"watchdog_exporter/config"
 )
 
 type WatchDogValidator struct {
-	responseBodyLimit int64
-	debug             bool
+	tlsChecker      TLSChecker
+	responseChecker HTTPResponseChecker
+	debug           bool
 }
 
-func NewWatchDogValidator(responseBodyLimit int64, debug bool) *WatchDogValidator {
-	return &WatchDogValidator{responseBodyLimit: responseBodyLimit, debug: debug}
-}
-
-func (m *WatchDogValidator) Validate(endpointName string, request config.EndpointRequest, routeName string, route config.Route, validation config.EndpointValidation) (status string, duration float64, err error) {
-	// prepare default HTTP client timeout
-	client := &http.Client{
-		Timeout: request.Timeout,
+func NewWatchDogValidator(tlsChecker TLSChecker, responseChecker HTTPResponseChecker, debug bool) *WatchDogValidator {
+	return &WatchDogValidator{
+		tlsChecker:      tlsChecker,
+		responseChecker: responseChecker,
+		debug:           debug,
 	}
+}
 
-	// parse request URL once
-	targetURL := request.URL
-	u, err := url.Parse(request.URL)
+func (m *WatchDogValidator) Validate(endpointName string, rc config.EndpointRequest, routeName string, route config.Route, validation *config.EndpointValidation, checkCerts bool) (status string, duration float64, certsRep *CertsReport, err error) {
+	client := &http.Client{Timeout: rc.Timeout}
+	u, err := url.Parse(rc.URL)
 	if err != nil {
-		log.Printf("invalid-url: failed to parse URL %s - %v", request.URL, err)
-		return "invalid-url", 0, err
+		log.Printf("invalid-url: failed to parse URL %s - %v", rc.URL, err)
+		return "invalid-url", 0, nil, err
 	}
 	originalHost := u.Hostname()
 
-	// prepare proxy if needed
 	var proxyFunc func(*http.Request) (*url.URL, error)
 	if route.ProxyUrl != "" {
-		proxyURL, err := url.Parse(route.ProxyUrl)
-		if err != nil {
-			log.Printf("invalid-proxy-definition: failed to parse proxy URL %s - %v", route.ProxyUrl, err)
-			return "invalid-proxy-definition", 0, err
+		proxyURL, pErr := url.Parse(route.ProxyUrl)
+		if pErr != nil {
+			log.Printf("invalid-proxy-definition: failed to parse proxy URL %s - %v", route.ProxyUrl, pErr)
+			return "invalid-proxy-definition", 0, nil, pErr
 		}
 		proxyFunc = http.ProxyURL(proxyURL)
 	}
 
-	// dialer with default timeouts
-	dialer := &net.Dialer{
-		Timeout:   request.Timeout,
-		KeepAlive: 30 * time.Second,
-	}
+	dialer := &net.Dialer{Timeout: rc.Timeout, KeepAlive: 30 * time.Second}
 
-	// custom Transport: TLS + SNI + DialContext for TargetIP override and optional proxy
 	transport := &http.Transport{
 		Proxy:             proxyFunc,
 		DisableKeepAlives: true,
-		TLSClientConfig:   &tls.Config{ServerName: originalHost}, // SNI
+		TLSClientConfig:   m.tlsChecker.TLSClientConfigWithSNI(originalHost),
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// addr == "hostname:port"
 			host, port, splitErr := net.SplitHostPort(addr)
 			if splitErr != nil {
-				// fallback to default dial
 				return dialer.DialContext(ctx, network, addr)
 			}
-
-			// override host if route.TargetIP provided
 			if route.TargetIP != "" {
 				host = route.TargetIP
 			}
@@ -77,9 +64,8 @@ func (m *WatchDogValidator) Validate(endpointName string, request config.Endpoin
 	}
 	client.Transport = transport
 
-	// rebuild target URL if TargetIP override
+	targetURL := rc.URL
 	if route.TargetIP != "" {
-		// keep scheme and port, override host part
 		if u.Port() == "" {
 			if u.Scheme == "https" {
 				u.Host = net.JoinHostPort(route.TargetIP, "443")
@@ -92,113 +78,73 @@ func (m *WatchDogValidator) Validate(endpointName string, request config.Endpoin
 		targetURL = u.String()
 	}
 
-	// prepare HTTP request
-	method := request.Method
-	req, err := http.NewRequest(method, targetURL, nil)
+	req, err := http.NewRequest(rc.Method, targetURL, nil)
 	if err != nil {
-		log.Printf("invalid-request-definition: failed to prepare request for endpoint %s URL %s - %v", endpointName, targetURL, err)
-		return "invalid-request-definition", 0, err
+		log.Printf("invalid-request-definition: failed to prepare rc for endpoint %s URL %s - %v", endpointName, targetURL, err)
+		return "invalid-request-definition", 0, nil, err
 	}
-
-	// set Host header back to original
 	req.Host = originalHost
-	// set custom headers
 	req.Header.Set("Cache-Control", "no-cache")
-	for key, val := range request.Headers {
-		req.Header.Set(key, val)
+	for k, v := range rc.Headers {
+		req.Header.Set(k, v)
 	}
-	// add a conventional header with the local time when the request is executed
-	// use RFC3339 (with local timezone offset) and do not override if already provided
 	if req.Header.Get("X-Local-Time") == "" {
 		req.Header.Set("X-Local-Time", time.Now().Format(time.RFC3339))
 	}
 
-	// request
 	start := time.Now()
 	resp, err := client.Do(req)
-	if err != nil {
-		duration = time.Since(start).Seconds()
+	duration = time.Since(start).Seconds()
+	if err == nil {
+		if checkCerts && req.URL.Scheme == "https" && resp != nil && resp.TLS != nil {
+			rep := m.tlsChecker.Inspect(resp)
+			certsRep = &rep
+		}
+	} else {
+		if req.URL.Scheme == "https" {
+			if st, ok := m.tlsChecker.CheckHandshakeError(err); ok {
+				if m.debug {
+					log.Printf("%s: %s / '%s': %v", st, rc.URL, routeName, err)
+				}
+				return st, duration, nil, err
+			}
+		}
+
 		if isTimeoutErr(err) {
 			if m.debug {
-				log.Printf("timeout: %s / '%s': %v", request.URL, routeName, err)
+				log.Printf("request-execution-timeout: %s / '%s': %v", rc.URL, routeName, err)
 			}
-			return "timeout", duration, err
+			return "request-execution-timeout", duration, nil, err
 		}
 		if m.debug {
-			log.Printf("invalid-request-execution: %s / '%s': %v", request.URL, routeName, err)
+			log.Printf("invalid-request-execution: %s / '%s': %v", rc.URL, routeName, err)
 		}
-		return "invalid-request-execution", duration, err
+		return "invalid-request-execution", duration, nil, err
 	}
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(resp.Body)
+	defer func(Body io.ReadCloser) { _ = Body.Close() }(resp.Body)
 
-	// response validation
-	status, err = m.validateResponse(request.URL, routeName, resp, validation)
+	// HTTP response validation via injected checker
+	status = "valid"
+	if validation != nil {
+		status, err = m.responseChecker.ValidateResponse(rc.URL, routeName, resp, rc.ResponseBodyLimit, *validation)
+	}
 	duration = time.Since(start).Seconds()
-	return status, duration, err
-}
-
-func (m *WatchDogValidator) validateResponse(url, routeName string, resp *http.Response, v config.EndpointValidation) (status string, err error) {
-	if resp.StatusCode != v.StatusCode {
-		if m.debug {
-			log.Printf("invalid-status-code: %s / '%s', expected '%d', got '%d'", url, routeName, v.StatusCode, resp.StatusCode)
-		}
-		return "invalid-status-code", nil
-	}
-
-	for k, v := range v.Headers {
-		gotV := resp.Header.Get(k)
-		if gotV != v {
-			if m.debug {
-				log.Printf("invalid-header-value: %s / '%s', expected '%s', got '%s'", url, routeName, v, gotV)
-			}
-			return "invalid-header-value", nil
-		}
-	}
-
-	if v.BodyRegex != "" {
-		defer func(Body io.ReadCloser) {
-			_ = Body.Close()
-		}(resp.Body)
-		reader := io.LimitReader(resp.Body, m.responseBodyLimit)
-		body, readErr := io.ReadAll(reader)
-		if readErr != nil {
-			if isTimeoutErr(readErr) {
-				if m.debug {
-					log.Printf("timeout: %s / '%s', body read error: %v", url, routeName, readErr)
-				}
-				return "timeout", readErr
-			}
-			if m.debug {
-				log.Printf("invalid-request-execution: %s / '%s', body read error: %v", url, routeName, readErr)
-			}
-			return "error:invalid-request-execution", readErr
-		}
-		matched, _ := regexp.Match(v.BodyRegex, body)
-		if !matched {
-			if m.debug {
-				log.Printf("invalid-body-regex: %s / '%s', expected regex '%s', got ---\n%s\n---", url, routeName, v.BodyRegex, body)
-			}
-			return "invalid-body-regex", nil
-		}
-	}
-	return "valid", nil
+	return status, duration, certsRep, err
 }
 
 func isTimeoutErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	var nerr net.Error
-	if errors.As(err, &nerr) && nerr.Timeout() {
+	var nErr net.Error
+	if errors.As(err, &nErr) && nErr.Timeout() {
 		return true
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	var uerr *url.Error
-	if errors.As(err, &uerr) && uerr.Timeout() {
+	var uErr *url.Error
+	if errors.As(err, &uErr) && uErr.Timeout() {
 		return true
 	}
 	return false

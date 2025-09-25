@@ -1,12 +1,12 @@
 package config
 
 import (
-	"fmt"
-	"gopkg.in/yaml.v3"
-	"net/http"
+	"log"
 	"os"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type WatchDogConfig struct {
@@ -17,40 +17,44 @@ type WatchDogConfig struct {
 }
 
 type ProgramSettings struct {
-	ListenAddress     string        `yaml:"listen-address"`
-	TelemetryPath     string        `yaml:"telemetry-path"`
-	MaxWorkersCount   int           `yaml:"max-workers-count"`
-	DefaultTimeout    time.Duration `yaml:"default-timeout"`
-	ResponseBodyLimit int64         `yaml:"response-body-limit"`
-	Debug             bool          `yaml:"debug"`
+	ListenAddress            string        `yaml:"listen-address" default:":9321"`
+	TelemetryPath            string        `yaml:"telemetry-path" default:"/metrics"`
+	MaxWorkersCount          int           `yaml:"max-workers-count" default:"4"`
+	ProbeInterval            time.Duration `yaml:"probe-interval" default:"1m"`
+	DefaultTimeout           time.Duration `yaml:"default-timeout" default:"5s"`
+	DefaultResponseBodyLimit int64         `yaml:"default-response-body-limit" default:"1024"`
+	Debug                    bool          `yaml:"debug"`
 }
 
 type MetricsContext struct {
 	Namespace   string `yaml:"namespace"`
 	Environment string `yaml:"environment"`
 }
+
 type Route struct {
 	ProxyUrl string `yaml:"proxy-url"`
 	TargetIP string `yaml:"target-ip"`
 }
 
 type Endpoint struct {
-	Group      string             `yaml:"group"`
-	Protocol   string             `yaml:"protocol"`
-	Routes     []string           `yaml:"routes"`
-	Request    EndpointRequest    `yaml:"request"`
-	Validation EndpointValidation `yaml:"validation"`
+	Group           string              `yaml:"group" default:"default"`
+	Protocol        string              `yaml:"protocol" default:"http"`
+	InspectTLSCerts bool                `yaml:"inspect-tls-certs" default:"false"`
+	Routes          []string            `yaml:"routes" default:"[]"`
+	Request         EndpointRequest     `yaml:"request"`
+	Validation      *EndpointValidation `yaml:"validation"`
 }
 type EndpointRequest struct {
-	Timeout time.Duration     `yaml:"timeout"`
-	Method  string            `yaml:"method"`
-	Headers map[string]string `yaml:"headers"`
-	URL     string            `yaml:"url"`
+	Method            string            `yaml:"method" default:"GET"`
+	Headers           map[string]string `yaml:"headers" default:"{}"`
+	URL               string            `yaml:"url"`
+	Timeout           time.Duration     `yaml:"timeout" default:"0s"`
+	ResponseBodyLimit int64             `yaml:"response-body-limit" default:"0"`
 }
 type EndpointValidation struct {
-	StatusCode int               `yaml:"status-code"`
-	Headers    map[string]string `yaml:"headers"`
-	BodyRegex  string            `yaml:"body-regex"`
+	StatusCode int               `yaml:"status-code" default:"200"`
+	Headers    map[string]string `yaml:"headers" default:"{}"`
+	BodyRegex  string            `yaml:"body-regex" default:".*"`
 }
 
 func LoadConfig(path string) (*WatchDogConfig, error) {
@@ -63,51 +67,26 @@ func LoadConfig(path string) (*WatchDogConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	config.fillDefaults()
 	return &config, nil
 }
 
 func (c *WatchDogConfig) fillDefaults() {
-	if c.Settings.ListenAddress == "" {
-		c.Settings.ListenAddress = ":9321"
-	}
-	if c.Settings.TelemetryPath == "" {
-		c.Settings.TelemetryPath = "/metrics"
-	}
-	if c.Settings.MaxWorkersCount == 0 {
-		c.Settings.MaxWorkersCount = 4
-	}
-	if c.Settings.DefaultTimeout == 0 {
-		c.Settings.DefaultTimeout = 5 * time.Second
-	}
-	if c.Settings.ResponseBodyLimit == 0 {
-		c.Settings.ResponseBodyLimit = 1024
-	}
-
-	for _, endpoint := range c.Endpoints {
+	for name, endpoint := range c.Endpoints {
 		if endpoint.Request.Timeout == 0 {
 			endpoint.Request.Timeout = c.Settings.DefaultTimeout
 		}
-		if endpoint.Request.Method == "" {
-			endpoint.Request.Method = http.MethodGet
+		if endpoint.Request.ResponseBodyLimit == 0 {
+			endpoint.Request.ResponseBodyLimit = c.Settings.DefaultResponseBodyLimit
 		}
+		c.Endpoints[name] = endpoint
 	}
 }
 
-func (c *WatchDogConfig) PrintHello() {
+func (c *WatchDogConfig) LogSummary() {
 	var routeKeys []string
 	for k := range c.Routes {
 		routeKeys = append(routeKeys, k)
 	}
-
-	var endpointKeys []string
-	for k := range c.Endpoints {
-		endpointKeys = append(endpointKeys, k)
-	}
-
-	fmt.Printf("Routes: %s\nEndpoints: %s\n",
-		strings.Join(routeKeys, ", "),
-		strings.Join(endpointKeys, ", "),
-	)
+	log.Printf("Monitored endpoints count: %d, with interval: %v, routes: %s", len(c.Endpoints), c.Settings.ProbeInterval, strings.Join(routeKeys, ", "))
 }
