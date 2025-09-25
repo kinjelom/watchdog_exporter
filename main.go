@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"watchdog_exporter/config"
 	"watchdog_exporter/metrics"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var ProgramVersion = "dev"

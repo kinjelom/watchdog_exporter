@@ -1,12 +1,14 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"watchdog_exporter/config"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func makeBasicConfig() *config.WatchDogConfig {
@@ -62,6 +64,7 @@ func TestEndpointValidationMetric(t *testing.T) {
 		"url":      "https://example.com",
 		"route":    "r1",
 		"status":   "valid",
+		"is_error": "false",
 	}
 	// set gauge
 	m.EndpointValidation.With(labels).Set(1)
@@ -89,6 +92,7 @@ func TestEndpointDurationMetric(t *testing.T) {
 		"url":      "https://example.org",
 		"route":    "routeA",
 		"status":   "err",
+		"is_error": "true",
 	}
 	// set gauge
 	m.EndpointDuration.With(labels).Set(1.234)
