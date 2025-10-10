@@ -27,7 +27,12 @@ func NewWatchDogValidator(tlsChecker TLSChecker, responseChecker HTTPResponseChe
 }
 
 func (m *WatchDogValidator) Validate(endpointName string, rc config.EndpointRequest, routeName string, route config.Route, validation *config.EndpointValidation, checkCerts bool) (status string, duration float64, certsRep *CertsReport, err error) {
-	client := &http.Client{Timeout: rc.Timeout}
+	client := &http.Client{
+		Timeout: rc.Timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	u, err := url.Parse(rc.URL)
 	if err != nil {
 		log.Printf("invalid-url: failed to parse URL %s - %v", rc.URL, err)
